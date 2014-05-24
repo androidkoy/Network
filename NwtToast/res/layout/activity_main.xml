@@ -1,0 +1,64 @@
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:scrollbars="horizontal"
+    tools:context="${packageName}.${activityClass}" >
+
+    <TextView
+        android:id="@+id/txtIP"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/hello_world" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="fill_parent"
+        android:layout_alignParentLeft="true"
+        android:layout_below="@+id/txtIP"
+        android:orientation="vertical" >
+
+
+            <ScrollView
+                android:id="@+id/scrStory"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+            android:layout_alignParentLeft="true"
+            android:layout_gravity="top"
+            android:layout_weight="1"
+            android:orientation="vertical" >
+
+                <EditText
+                    android:id="@+id/Story"
+                    android:layout_width="fill_parent"
+                    android:layout_height="fill_parent"
+                    android:layout_gravity="top"
+                    android:clickable="false"
+                    android:ems="10"
+                    android:enabled="true"
+                    android:focusable="false"
+                    android:focusableInTouchMode="false"
+                    android:gravity="bottom"
+                    android:inputType="textMultiLine"
+                    android:longClickable="false"
+                    android:scrollHorizontally="true"
+                    android:scrollbarStyle="insideOverlay"
+                    android:scrollbars="horizontal" >
+
+                    <requestFocus />
+                </EditText>
+            </ScrollView>
+
+        <EditText
+            android:id="@+id/talk"
+            android:layout_width="match_parent"
+            android:layout_height="20dp"
+            android:layout_gravity="bottom"
+            android:layout_margin="2dp"
+            android:layout_weight="0.05"
+            android:ems="10"
+            android:padding="2dp"
+            android:singleLine="true" />
+    </LinearLayout>
+
+</RelativeLayout>
