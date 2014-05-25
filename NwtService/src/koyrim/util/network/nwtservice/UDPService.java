@@ -22,6 +22,7 @@ import android.app.Notification.Builder;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
 import android.media.RingtoneManager;
 import android.os.Handler;
@@ -35,7 +36,7 @@ import android.widget.Toast;
 
 public class UDPService extends Service {
 
-	final static String tag = "UDPService";
+	private final static String tag = "UDPService";
 
 	@Override
 	public IBinder onBind(Intent arg0) {
@@ -55,7 +56,7 @@ public class UDPService extends Service {
 		Log.d(tag, "onDestroy");
 	}
 
-	void registerRestartAlarm() {
+	private void registerRestartAlarm() {
 		Log.d(tag, "registerRestartAlarm");
 		Intent intent = new Intent(this, AutoStart.class);
 		intent.setAction(AutoStart.ACTION_RESTART_SERVICE);
@@ -70,7 +71,7 @@ public class UDPService extends Service {
 				10 * 1000, sender); // ¾Ë¶÷ÀÌ
 	}
 
-	void unregisterRestartAlarm() {
+	private void unregisterRestartAlarm() {
 		Log.d(tag, "unregisterRestartAlarm");
 		Intent intent = new Intent(UDPService.this, AutoStart.class);
 		intent.setAction(AutoStart.ACTION_RESTART_SERVICE);
@@ -89,12 +90,16 @@ public class UDPService extends Service {
 		return START_REDELIVER_INTENT;
 	}
 
-	String connectedIP;
-	boolean connected;
-	int serverPort = 10002;
-	MessageBox sendBox, talkBox;
+	private String connectedIP;
+	private boolean connected;
+	private int serverPort = 10002;
+	private MessageBox sendBox, talkBox;
 
+	public static Context svcContext;
+	
 	private void setInit() {
+		
+		svcContext = this;
 
 		// getIPAddress();
 		connectedIP = "";
@@ -272,7 +277,7 @@ public class UDPService extends Service {
 		};
 	};
 
-	private void AddStory(String talk) {
+	public void AddStory(String talk) {
 		talkBox.set(talk);
 
 		Log.d("AddStory", talk);
