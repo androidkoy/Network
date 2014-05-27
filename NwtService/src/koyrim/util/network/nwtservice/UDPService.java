@@ -1,58 +1,70 @@
 package koyrim.util.network.nwtservice;
 
 import java.io.BufferedReader;
-import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
-import java.net.NetworkInterface;
 import java.net.Socket;
-import java.net.SocketException;
-import java.net.URLEncoder;
-import java.net.UnknownHostException;
 import java.util.ArrayList;
-import java.util.Enumeration;
 
+import android.R.bool;
 import android.annotation.SuppressLint;
 import android.app.AlarmManager;
 import android.app.Notification;
-import android.app.Notification.BigPictureStyle;
 import android.app.Notification.Builder;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.media.RingtoneManager;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
 import android.os.SystemClock;
 import android.util.Log;
-import android.widget.ScrollView;
-import android.widget.TextView;
 import android.widget.Toast;
 
 public class UDPService extends Service {
 
 	private final static String tag = "UDPService";
 
+	public static boolean isRestarting = false;
+	public static int connMode = -1;
+
 	@Override
 	public IBinder onBind(Intent arg0) {
-		// TODO Auto-generated method stub
 		return null;
 	}
+
+	AutoStart receiver;
 
 	public void onCreate() {
 		unregisterRestartAlarm(); // 이미 등록된 알람이 있으면 제거
 
 		setInit();
+
+		IntentFilter mintentFilter = new IntentFilter();
+		// mWifiFilter.addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION);
+		// mWifiFilter.addAction(WifiManager.RSSI_CHANGED_ACTION);
+		mintentFilter.addAction(ConnectivityManager.CONNECTIVITY_ACTION);
+		mintentFilter.addAction(Intent.ACTION_PACKAGE_ADDED);
+		mintentFilter.addAction(Intent.ACTION_PACKAGE_REPLACED);
+		mintentFilter.addAction(Intent.ACTION_BOOT_COMPLETED);
+		mintentFilter.addAction("AutoStart.Restart");
+		mintentFilter.addDataScheme("package");
+		receiver = new AutoStart();
+		registerReceiver(receiver, mintentFilter);
 	}
 
 	public void onDestroy() {
 		Toast.makeText(this, "UDPService Stop", Toast.LENGTH_SHORT).show();
 		registerRestartAlarm(); // 서비스가 죽을 때 알람 등록
+		unregisterReceiver(receiver);
 		Log.d(tag, "onDestroy");
 	}
 
@@ -82,7 +94,7 @@ public class UDPService extends Service {
 	}
 
 	public int onStartCommand(Intent intent, int flags, int startid) {
-		Intent intents = new Intent(getBaseContext(), UDPEngine.class);
+		// Intent intents = new Intent(getBaseContext(), UDPEngine.class);
 		// startActivity(intents);
 		Toast.makeText(this, "UDPService Start", Toast.LENGTH_SHORT).show();
 		Log.d(tag, "onStart");
@@ -96,9 +108,9 @@ public class UDPService extends Service {
 	private MessageBox sendBox, talkBox;
 
 	public static Context svcContext;
-	
+
 	private void setInit() {
-		
+
 		svcContext = this;
 
 		// getIPAddress();
@@ -110,28 +122,48 @@ public class UDPService extends Service {
 		talkBox = new MessageBox();
 
 		runUDPThread();
+		AddStory(getNetworkMode());
 	}
 
+	private String getNetworkMode() {
+		ConnectivityManager cManager; 
+		NetworkInfo mobile; 
+		NetworkInfo wifi; 
+		 
+		cManager=(ConnectivityManager)getSystemService(Context.CONNECTIVITY_SERVICE); 
+		mobile = cManager.getNetworkInfo(ConnectivityManager.TYPE_MOBILE); 
+		wifi = cManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI); 
+		 
+		if(mobile.isConnected())
+			return "Mobile On";
+		if(wifi.isConnected())
+			return "WiFi On";
+		return "";
+	}
+	
 	private String getIPAddress() {
 		try {
 			Socket socket = new Socket("www.google.com", 80);
-			return socket.getLocalAddress().toString();
+			String ip = socket.getLocalAddress().toString();
+			socket.close();
+			return ip;
 		} catch (Exception e) {
 			Log.i("ERROR", e.getMessage());
 		}
 		return "127.0.0.2";
 	}
 
-	Thread thSendPkt;
-	
+	Thread thSendPkt = null;
+
 	@SuppressLint("NewApi")
 	private void sendPkt(String msg) {
 		sendBox.set(msg);
 		Log.i("sendPkt", msg);
-		
+
 		if (connectedIP.isEmpty())
 			return;
-		if(thSendPkt != null && !thSendPkt.getState().equals(Thread.State.TERMINATED))
+		if (thSendPkt != null
+				&& !thSendPkt.getState().equals(Thread.State.TERMINATED))
 			return;
 		thSendPkt = new Thread(new Runnable() {
 
@@ -147,6 +179,7 @@ public class UDPService extends Service {
 						DatagramPacket out_datagramPacket = new DatagramPacket(
 								buf, buf.length, serverAddr, serverPort);
 						socket.send(out_datagramPacket);
+						socket.close();
 
 					}
 				} catch (Exception e) {
@@ -163,11 +196,11 @@ public class UDPService extends Service {
 		String[] param = cmd.split(" ");
 
 		if (param[0].equals("conn")) {
-			runUDPThread();
+			startServer();
 		} else if (param[0].equals("setIP")) {
 			connectedIP = param[1];
 		} else if (param[0].equals("disconn")) {
-			connected = false;
+			stopServer();
 		} else if (param[0].equals("port")) {
 			serverPort = Integer.parseInt(param[1]);
 		} else if (param[0].equals("cmd")) {
@@ -185,12 +218,12 @@ public class UDPService extends Service {
 		try {
 			process = runtime.exec(cmd);
 			process.waitFor();
-			
+
 			BufferedReader br = new BufferedReader(new InputStreamReader(
 					process.getInputStream()));
 			String line;
 			while ((line = br.readLine()) != null) {
-				res +=  " \r\n" + line;
+				res += " \r\n" + line;
 			}
 
 			Log.i("ExeCmd", res);
@@ -202,14 +235,29 @@ public class UDPService extends Service {
 		}
 	}
 
-	private void runUDPThread() {
-		connected = true;
-		Thread udpThread = new Thread(new Runnable() {
+	Thread udpThread = null;
+	DatagramSocket sckRecv = null;
+
+	private boolean runUDPThread() {
+		if (udpThread != null
+				&& !udpThread.getState().equals(Thread.State.TERMINATED)) {
+			Log.i("runUDPThread", "Thread isn't TERMINATER");
+			Log.i("runUDPThread",
+					"udpThread != null : " + String.valueOf(udpThread != null));
+			Log.i("runUDPThread",
+					"!udpThread.getState().equals(Thread.State.TERMINATED) : "
+							+ String.valueOf(!udpThread.getState().equals(
+									Thread.State.TERMINATED)));
+			udpThread.interrupt();
+			return false;
+		}
+		udpThread = new Thread(new Runnable() {
 
 			public void run() {
 				try {
 					String msg;
-					DatagramSocket sck = new DatagramSocket(serverPort);
+					connected = true;
+					sckRecv = new DatagramSocket(serverPort);
 
 					AddStory("#] UDP Server Receiving at " + getIPAddress()
 							+ " : " + serverPort + " ... ");
@@ -217,27 +265,52 @@ public class UDPService extends Service {
 						byte[] buf = new byte[1024];
 						DatagramPacket dPkt = new DatagramPacket(buf,
 								buf.length);
-						sck.receive(dPkt);
+						sckRecv.receive(dPkt);
+						if (!connected)
+							break;
 						msg = new String(dPkt.getData(), 0, dPkt.getLength(),
 								"utf-8");
 						connectedIP = dPkt.getAddress().getHostAddress();
 						AddStory("R] " + dPkt.getAddress().getHostAddress()
 								+ " : " + msg);
-						
+
 						Log.d("cmdLoc", msg);
 						if (msg.substring(0, 1).equals("/")) {
 							readCmd(msg.substring(1));
 						}
 					}
+					if (!sckRecv.isClosed())
+						sckRecv.close();
 				} catch (Exception e) {
-					// Log.i("ERROR", e.getMessage());
+					Log.i("runUDPThread", e.toString() + " / " + e.getMessage());
 					AddStory("ERR : " + e.toString() + " / " + e.getMessage());
 				}
 			}
 		});
 
 		udpThread.start();
+		Log.i("runUDPThread", "Success");
+		return true;
+	}
 
+	public boolean startServer() {
+		if (!runUDPThread()) {
+			Log.i("startServer", "fail to startServer");
+			return false;
+		}
+		return true;
+	}
+
+	public void stopServer() {
+		connected = false;
+		if (sckRecv != null)
+			sckRecv.close();
+		udpThread.interrupt();
+	}
+
+	public Boolean isServerAlive() {
+
+		return udpThread.isInterrupted();
 	}
 
 	private Handler mHandler = new Handler() {
@@ -259,8 +332,7 @@ public class UDPService extends Service {
 			// vibrate : 쉬고, 울리고, 쉬고, 울리고... 밀리세컨
 			// 진동이 되려면 AndroidManifest.xml에 진동 권한을 줘야 한다.
 
-			Notification.BigTextStyle noti = new Notification.BigTextStyle(
-					builder).setSummaryText("and More +")
+			new Notification.BigTextStyle(builder).setSummaryText("and More +")
 					.setBigContentTitle("알립니다.[확장]")
 					.bigText(msg.obj.toString());
 

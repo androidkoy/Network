@@ -16,42 +16,90 @@ public class AutoStart extends BroadcastReceiver {
 	public static final String ACTION_RESTART_SERVICE = "AutoStart.Restart";
 	private UDPService svcContext = ((UDPService) UDPService.svcContext);
 
+
 	@Override
 	public void onReceive(Context context, Intent mainIntent) {
 
 		String action = mainIntent.getAction().toString();
+		Log.i("onReceive", action + " // " + mainIntent.getDataString());
 
-		if (!action.equals(ConnectivityManager.CONNECTIVITY_ACTION)) {
+		if (!UDPService.isRestarting && action.equals(ConnectivityManager.CONNECTIVITY_ACTION)) {
+
+			UDPService.isRestarting = true;
+			
+			ConnectivityManager conManager = (ConnectivityManager) context
+					.getSystemService(Context.CONNECTIVITY_SERVICE);
+			final NetworkInfo activeNetInfo = conManager.getActiveNetworkInfo();
+
+			if( activeNetInfo == null) {
+				//svcContext.stopServer();
+				svcContext.AddStory("Network Off");
+				UDPService.connMode = -1;
+				UDPService.isRestarting = false;
+				return;
+			}
+			if( UDPService.connMode == activeNetInfo.getType() ){
+				UDPService.isRestarting = false;
+				return;
+			}
+			try {
+
+				svcContext.stopServer(); 
+
+				new Thread(new Runnable() {
+					@Override
+					public void run() {
+						int timeout = 5;
+						while (svcContext.isServerAlive()) {
+							try {
+								Log.i("isServerAlive()", svcContext
+										.isServerAlive().toString());
+								Thread.sleep(1000);
+								if (--timeout < 0)
+									break;
+							} catch (InterruptedException e) {
+								// TODO Auto-generated catch block
+								e.printStackTrace();
+							}
+						}
+						if (svcContext.startServer())
+							UDPService.isRestarting = false;
+						if (!UDPService.isRestarting) {
+							UDPService.connMode  = activeNetInfo.getType();
+							if (UDPService.connMode == ConnectivityManager.TYPE_WIFI) {
+								svcContext.AddStory("WiFi On");
+							} else if (UDPService.connMode == ConnectivityManager.TYPE_MOBILE) {
+								svcContext.AddStory("Mobile On");
+							}
+						}
+						else {
+							svcContext.stopServer();
+							svcContext.AddStory("Network Off");
+							UDPService.connMode = -1;
+						}
+						UDPService.isRestarting = false;
+							
+
+					}
+				}).start();
+
+			} catch (Exception e) {
+				svcContext.stopServer();
+				svcContext.AddStory("Network Off");
+				UDPService.connMode = -1;
+				UDPService.isRestarting = false;
+			}
+		} else if (action.equals(Intent.ACTION_PACKAGE_ADDED)
+				|| action.equals(Intent.ACTION_PACKAGE_REPLACED)
+				|| action.equals(ACTION_RESTART_SERVICE)
+				|| action.equals(Intent.ACTION_BOOT_COMPLETED)) {
+
 			Intent intent = new Intent(context, UDPService.class);
 			context.startService(intent);
 
 			Toast.makeText(context, "mode : " + action, Toast.LENGTH_SHORT)
 					.show();
 			Log.i("Autostart", "started");
-		}
-
-		else if (action.equals(ConnectivityManager.CONNECTIVITY_ACTION)) {
-			ConnectivityManager conManager = (ConnectivityManager) context
-					.getSystemService(Context.CONNECTIVITY_SERVICE);
-			NetworkInfo activeNetInfo = conManager.getActiveNetworkInfo();
-			// Log.e("activeNetInfo",activeNetInfo.getTypeName()+"");
-
-			try {
-
-				if (activeNetInfo.getTypeName() != null) {
-					if (activeNetInfo.getTypeName().equals("WIFI")) {
-						if (isWifi())
-							svcContext.AddStory("WiFi On");
-					} else {
-						if (isMobile(conManager))
-							svcContext.AddStory("Mobile On");
-					}
-				} else {
-					svcContext.AddStory("Network off");
-				}
-			} catch (Exception e) {
-				svcContext.AddStory("Network Off");
-			}
 		}
 
 	}
